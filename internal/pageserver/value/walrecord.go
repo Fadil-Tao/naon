@@ -14,6 +14,7 @@ const (
 	KindMultixactOffsetCreate  RecordKind = 5
 	KindMultixactMembersCreate RecordKind = 6
 	KindTest                   RecordKind = 7
+	KindPagePatch              RecordKind = 8
 )
 
 func (k RecordKind) String() string {
@@ -32,6 +33,8 @@ func (k RecordKind) String() string {
 		return "MultixactMembersCreate"
 	case KindTest:
 		return "Test"
+	case KindPagePatch:
+		return "PagePatch"
 	default:
 		return fmt.Sprintf("RecordKind(%d)", uint8(k))
 	}
@@ -191,6 +194,8 @@ func decodeRecord(kind RecordKind, willInit bool, d *decoder) (WalRecord, error)
 	case KindTest:
 		app := d.bytes()
 		rec = TestRecord{Append: string(app), Clear: d.bool(), Init: willInit}
+	case KindPagePatch:
+		rec = decodePagePatch(d)
 	default:
 		return nil, fmt.Errorf("%w: unknown record kind %d", ErrCorrupt, kind)
 	}
