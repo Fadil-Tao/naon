@@ -23,7 +23,7 @@ import (
 
 func rng(a, b uint32) key.KeyRange { return key.KeyRange{Start: pg(a), End: pg(b)} }
 
-func readCfg() Config {
+func readCfg() opts {
 	c := testCfg()
 	c.Redo = TestRedo
 	return c
@@ -122,7 +122,7 @@ func TestGetBelowGCCutoff(t *testing.T) {
 	meta := RootMetadata(0, 17)
 	meta.DiskConsistentLsn, meta.LatestGCCutoffLsn = 100, 60
 	e := newEnv(t)
-	tl, err := Create(e.dir, e.tenant, e.id, meta, readCfg())
+	tl, err := Create(e.dir, e.tenant, e.id, meta, readCfg().Config, readCfg().Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}

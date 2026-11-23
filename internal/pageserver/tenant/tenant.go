@@ -31,9 +31,10 @@ var (
 )
 
 type Tenant struct {
-	id  ids.TenantID
-	dir string
-	cfg timeline.Config
+	id      ids.TenantID
+	dir     string
+	cfg     timeline.Config
+	plugins timeline.Plugins
 
 	mu        sync.RWMutex
 	timelines map[ids.TimelineID]*timeline.Timeline
@@ -41,12 +42,12 @@ type Tenant struct {
 	stopped   bool
 }
 
-func Open(dir string, id ids.TenantID, cfg timeline.Config) (*Tenant, error) {
+func Open(dir string, id ids.TenantID, cfg timeline.Config, plugins timeline.Plugins) (*Tenant, error) {
 	tlDir := filepath.Join(dir, timelinesDir)
 	if err := os.MkdirAll(tlDir, 0o755); err != nil {
 		return nil, fmt.Errorf("tenant: create %s: %w", tlDir, err)
 	}
-	t := &Tenant{id: id, dir: dir, cfg: cfg, timelines: make(map[ids.TimelineID]*timeline.Timeline)}
+	t := &Tenant{id: id, dir: dir, cfg: cfg, plugins: plugins, timelines: make(map[ids.TimelineID]*timeline.Timeline)}
 	if err := t.loadAll(); err != nil {
 		t.Stop()
 		return nil, err
@@ -99,7 +100,7 @@ func (t *Tenant) loadAll() error {
 				}
 				parent = p
 			}
-			tl, err := timeline.Load(t.timelinePath(id), t.id, id, parent, t.cfg)
+			tl, err := timeline.Load(t.timelinePath(id), t.id, id, parent, t.cfg, t.plugins)
 			if err != nil {
 				return fmt.Errorf("tenant: load timeline %s: %w", id, err)
 			}
@@ -209,7 +210,7 @@ func (t *Tenant) install(id ids.TimelineID, meta timeline.Metadata, parent *time
 	if err := iox.SyncDir(filepath.Dir(final)); err != nil {
 		return nil, err
 	}
-	tl, err := timeline.Load(final, t.id, id, parent, t.cfg)
+	tl, err := timeline.Load(final, t.id, id, parent, t.cfg, t.plugins)
 	if err != nil {
 		return nil, err
 	}

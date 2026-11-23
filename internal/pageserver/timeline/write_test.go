@@ -20,7 +20,7 @@ func pg(n uint32) key.Key { return key.Key{Field4: 16400, Field6: n} }
 
 func testTimeline(t *testing.T, start lsn.Lsn) *Timeline {
 	t.Helper()
-	tl, err := Create(t.TempDir(), ids.NewTenantID(), ids.NewTimelineID(), RootMetadata(start, 17), DefaultConfig())
+	tl, err := Create(t.TempDir(), ids.NewTenantID(), ids.NewTimelineID(), RootMetadata(start, 17), DefaultConfig(), Plugins{})
 	if err != nil {
 		t.Fatal(err)
 	}

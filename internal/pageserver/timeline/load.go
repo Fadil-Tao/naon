@@ -40,7 +40,7 @@ func BranchMetadata(parent Metadata, parentID ids.TimelineID, at lsn.Lsn) Metada
 	}
 }
 
-func Create(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, cfg Config) (*Timeline, error) {
+func Create(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, cfg Config, plugins Plugins) (*Timeline, error) {
 	if err := meta.Validate(); err != nil {
 		return nil, err
 	}
@@ -57,10 +57,10 @@ func Create(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, c
 	if err := SaveMetadata(path, meta); err != nil {
 		return nil, err
 	}
-	return newTimeline(dir, tenant, id, meta, nil, cfg), nil
+	return newTimeline(dir, tenant, id, meta, nil, cfg, plugins), nil
 }
 
-func Load(dir string, tenant ids.TenantID, id ids.TimelineID, ancestor *Timeline, cfg Config) (*Timeline, error) {
+func Load(dir string, tenant ids.TenantID, id ids.TimelineID, ancestor *Timeline, cfg Config, plugins Plugins) (*Timeline, error) {
 	if _, err := iox.CleanupTemp(dir); err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func Load(dir string, tenant ids.TenantID, id ids.TimelineID, ancestor *Timeline
 		}
 	}
 
-	t := newTimeline(dir, tenant, id, meta, ancestor, cfg)
+	t := newTimeline(dir, tenant, id, meta, ancestor, cfg, plugins)
 	err = t.layers.Update(func(u *layermap.Updater) error {
 		for _, e := range entries {
 			if err := u.InsertHistoric(e); err != nil {

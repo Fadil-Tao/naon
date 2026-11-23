@@ -16,32 +16,38 @@ import (
 )
 
 type Config struct {
-	CheckpointDistance uint64
-	CheckpointTimeout  time.Duration
-
-	MaxOpenLayerBytes uint64
-
-	FlushRetryDelay time.Duration
-
-	Redo Redo
+	CheckpointDistance     uint64
+	CheckpointTimeout      time.Duration
+	MaxOpenLayerBytes      uint64
+	FlushRetryDelay        time.Duration
+	ImageCreationThreshold int
+	ImageTargetSize        uint64
 
 	failpoint func(name string) error
 }
 
 func DefaultConfig() Config {
 	return Config{
-		CheckpointDistance: 256 << 20,
-		CheckpointTimeout:  10 * time.Minute,
-		MaxOpenLayerBytes:  512 << 20,
-		FlushRetryDelay:    time.Second,
+		CheckpointDistance:     256 << 20,
+		CheckpointTimeout:      10 * time.Minute,
+		MaxOpenLayerBytes:      512 << 20,
+		FlushRetryDelay:        time.Second,
+		ImageCreationThreshold: 3,
+		ImageTargetSize:        128 << 20,
 	}
 }
 
+type Plugins struct {
+	Redo     Redo
+	KeySpace KeySpaceFunc
+}
+
 type Timeline struct {
-	tenant ids.TenantID
-	id     ids.TimelineID
-	dir    string
-	cfg    Config
+	tenant  ids.TenantID
+	id      ids.TimelineID
+	dir     string
+	cfg     Config
+	plugins Plugins
 
 	ancestor    *Timeline
 	ancestorLsn lsn.Lsn
@@ -64,6 +70,8 @@ type Timeline struct {
 	meta      Metadata
 	metaDirty bool
 
+	imageMu sync.Mutex
+
 	pendingMu sync.Mutex
 	prevAt    map[layer.Desc]lsn.Lsn
 
@@ -75,10 +83,10 @@ type Timeline struct {
 	bgErr atomic.Pointer[error]
 }
 
-func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, ancestor *Timeline, cfg Config) *Timeline {
+func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, ancestor *Timeline, cfg Config, plugins Plugins) *Timeline {
 	dcl := meta.DiskConsistentLsn
 	t := &Timeline{
-		tenant: tenant, id: id, dir: dir, cfg: cfg,
+		tenant: tenant, id: id, dir: dir, cfg: cfg, plugins: plugins,
 		ancestor:       ancestor,
 		ancestorLsn:    meta.AncestorLsn,
 		retain:         make(map[lsn.Lsn]int),

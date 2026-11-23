@@ -32,15 +32,20 @@ func newEnv(t *testing.T) env {
 	return env{dir: filepath.Join(t.TempDir(), "tl"), tenant: ids.NewTenantID(), id: ids.NewTimelineID()}
 }
 
-func testCfg() Config {
-	c := DefaultConfig()
-	c.FlushRetryDelay = time.Millisecond
-	return c
+type opts struct {
+	Config
+	Plugins
 }
 
-func (e env) create(t *testing.T, cfg Config) *Timeline {
+func testCfg() opts {
+	c := DefaultConfig()
+	c.FlushRetryDelay = time.Millisecond
+	return opts{Config: c}
+}
+
+func (e env) create(t *testing.T, cfg opts) *Timeline {
 	t.Helper()
-	tl, err := Create(e.dir, e.tenant, e.id, RootMetadata(0, 17), cfg)
+	tl, err := Create(e.dir, e.tenant, e.id, RootMetadata(0, 17), cfg.Config, cfg.Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,9 +53,9 @@ func (e env) create(t *testing.T, cfg Config) *Timeline {
 	return tl
 }
 
-func (e env) load(t *testing.T, cfg Config) (*Timeline, error) {
+func (e env) load(t *testing.T, cfg opts) (*Timeline, error) {
 	t.Helper()
-	tl, err := Load(e.dir, e.tenant, e.id, nil, cfg)
+	tl, err := Load(e.dir, e.tenant, e.id, nil, cfg.Config, cfg.Plugins)
 	if err == nil {
 		t.Cleanup(tl.Stop)
 	}
@@ -715,7 +720,7 @@ func TestLoadBoundary(t *testing.T) {
 
 func TestLoadErrors(t *testing.T) {
 	t.Run("no metadata", func(t *testing.T) {
-		_, err := Load(t.TempDir(), ids.NewTenantID(), ids.NewTimelineID(), nil, testCfg())
+		_, err := Load(t.TempDir(), ids.NewTenantID(), ids.NewTimelineID(), nil, testCfg().Config, testCfg().Plugins)
 		if !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("err = %v", err)
 		}
@@ -724,7 +729,7 @@ func TestLoadErrors(t *testing.T) {
 		e := newEnv(t)
 		e.create(t, testCfg()).Stop()
 		os.WriteFile(filepath.Join(e.dir, MetadataFileName), []byte("junk"), 0o644)
-		if _, err := Load(e.dir, e.tenant, e.id, nil, testCfg()); !errors.Is(err, ErrBadMetadata) {
+		if _, err := Load(e.dir, e.tenant, e.id, nil, testCfg().Config, testCfg().Plugins); !errors.Is(err, ErrBadMetadata) {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -734,7 +739,7 @@ func TestLoadErrors(t *testing.T) {
 		ingest(t, tl, []op{{k: 0, lsn: 5, init: true, text: "a"}})
 		flush(t, tl)
 		tl.Stop()
-		_, err := Load(e.dir, e.tenant, ids.NewTimelineID(), nil, testCfg())
+		_, err := Load(e.dir, e.tenant, ids.NewTimelineID(), nil, testCfg().Config, testCfg().Plugins)
 		if err == nil || !strings.Contains(err.Error(), "belongs to") {
 			t.Fatalf("err = %v", err)
 		}
@@ -750,7 +755,7 @@ func TestLoadErrors(t *testing.T) {
 		b, _ := os.ReadFile(path)
 		b[10] ^= 0xFF
 		os.WriteFile(path, b, 0o644)
-		if _, err := Load(e.dir, e.tenant, e.id, nil, testCfg()); !errors.Is(err, layer.ErrBadSummary) {
+		if _, err := Load(e.dir, e.tenant, e.id, nil, testCfg().Config, testCfg().Plugins); !errors.Is(err, layer.ErrBadSummary) {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -775,12 +780,12 @@ func TestLoadErrors(t *testing.T) {
 func TestCreateErrors(t *testing.T) {
 	e := newEnv(t)
 	e.create(t, testCfg())
-	if _, err := Create(e.dir, e.tenant, e.id, RootMetadata(0, 17), testCfg()); !errors.Is(err, os.ErrExist) {
+	if _, err := Create(e.dir, e.tenant, e.id, RootMetadata(0, 17), testCfg().Config, testCfg().Plugins); !errors.Is(err, os.ErrExist) {
 		t.Fatalf("second create: %v", err)
 	}
 	bad := RootMetadata(0, 17)
 	bad.LatestGCCutoffLsn = 5
-	if _, err := Create(filepath.Join(t.TempDir(), "x"), e.tenant, e.id, bad, testCfg()); !errors.Is(err, ErrInvalidMetadata) {
+	if _, err := Create(filepath.Join(t.TempDir(), "x"), e.tenant, e.id, bad, testCfg().Config, testCfg().Plugins); !errors.Is(err, ErrInvalidMetadata) {
 		t.Fatalf("invalid metadata: %v", err)
 	}
 }
@@ -801,11 +806,14 @@ func TestFlushRetriesAfterErrors(t *testing.T) {
 			tl := e.create(t, cfg)
 			ingest(t, tl, ops)
 			flush(t, tl)
+			deadline := time.Now().Add(2 * time.Second)
+			for hits.Load() < wantHits && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
 			if hits.Load() != wantHits {
 				t.Fatalf("failpoint hit %d times, want %d", hits.Load(), wantHits)
 			}
-
-			deadline := time.Now().Add(2 * time.Second)
+			deadline = time.Now().Add(2 * time.Second)
 			for tl.BackgroundErr() == nil {
 				if time.Now().After(deadline) {
 					t.Fatal("errors were not reported")

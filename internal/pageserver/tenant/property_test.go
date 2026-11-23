@@ -133,7 +133,7 @@ func runBranchRound(t *testing.T, round int) {
 	if r.Intn(3) == 0 {
 		cfg.CheckpointDistance = uint64(8 + r.Intn(30))
 	}
-	tn, err := Open(e.dir, e.tenant, cfg)
+	tn, err := Open(e.dir, e.tenant, cfg.Config, cfg.Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func runBranchRound(t *testing.T, round int) {
 			tn.Stop()
 		}
 		var err error
-		if tn, err = Open(e.dir, e.tenant, cfg); err != nil {
+		if tn, err = Open(e.dir, e.tenant, cfg.Config, cfg.Plugins); err != nil {
 			fail("open: %v", err)
 		}
 		for i, s := range sims {

@@ -3,6 +3,7 @@ package waldecode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"math/rand"
 	"path/filepath"
@@ -124,6 +125,9 @@ func genWAL(t *testing.T, r *rand.Rand, nPages, nTxns int) ([]byte, []commitPoin
 			} else {
 				r.Read(cur)
 			}
+			if pg == 1 {
+				binary.BigEndian.PutUint32(cur[28:], uint32(nPages))
+			}
 			if !exists || r.Intn(10) == 0 {
 				add(walrecord.PageImage{Page: pg, Data: cur})
 			} else {
@@ -144,9 +148,10 @@ func genWAL(t *testing.T, r *rand.Rand, nPages, nTxns int) ([]byte, []commitPoin
 func cfg() timeline.Config {
 	c := timeline.DefaultConfig()
 	c.FlushRetryDelay = time.Millisecond
-	c.Redo = walredo.Patch{}
 	return c
 }
+
+var plugins = timeline.Plugins{Redo: walredo.Patch{}}
 
 func ingest(t *testing.T, r *rand.Rand, tl *timeline.Timeline, stream []byte, from, to lsn.Lsn) {
 	t.Helper()
@@ -204,7 +209,7 @@ func TestWALToPagesEndToEnd(t *testing.T) {
 		stream, points := genWAL(t, r, nPages, 30+r.Intn(30))
 		dir := filepath.Join(t.TempDir(), "tl")
 		tenant, id := ids.NewTenantID(), ids.NewTimelineID()
-		tl, err := timeline.Create(dir, tenant, id, timeline.RootMetadata(0, 0), cfg())
+		tl, err := timeline.Create(dir, tenant, id, timeline.RootMetadata(0, 0), cfg(), plugins)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +227,7 @@ func TestWALToPagesEndToEnd(t *testing.T) {
 		checkPoints(t, tl, points, nPages)
 
 		tl.Stop()
-		tl, err = timeline.Load(dir, tenant, id, nil, cfg())
+		tl, err = timeline.Load(dir, tenant, id, nil, cfg(), plugins)
 		if err != nil {
 			t.Fatal(err)
 		}

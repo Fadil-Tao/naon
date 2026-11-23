@@ -23,11 +23,15 @@ import (
 
 func pg(n uint32) key.Key { return key.Key{Field4: 16400, Field6: n} }
 
-func testCfg() timeline.Config {
+type opts struct {
+	timeline.Config
+	timeline.Plugins
+}
+
+func testCfg() opts {
 	c := timeline.DefaultConfig()
 	c.FlushRetryDelay = time.Millisecond
-	c.Redo = timeline.TestRedo
-	return c
+	return opts{Config: c, Plugins: timeline.Plugins{Redo: timeline.TestRedo}}
 }
 
 func ctx5(t testing.TB) context.Context {
@@ -45,9 +49,9 @@ func newEnv(t *testing.T) env {
 	return env{dir: filepath.Join(t.TempDir(), "tenant"), tenant: ids.NewTenantID()}
 }
 
-func (e env) open(t testing.TB, cfg timeline.Config) *Tenant {
+func (e env) open(t testing.TB, cfg opts) *Tenant {
 	t.Helper()
-	tn, err := Open(e.dir, e.tenant, cfg)
+	tn, err := Open(e.dir, e.tenant, cfg.Config, cfg.Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,7 +399,7 @@ func TestOpenCleansAndRejects(t *testing.T) {
 	os.WriteFile(filepath.Join(leftover, "junk"), []byte("x"), 0o644)
 	os.MkdirAll(filepath.Join(tlDir, "not-a-timeline"), 0o755)
 	os.WriteFile(filepath.Join(tlDir, "README"), []byte("x"), 0o644)
-	tn2, err := Open(e.dir, e.tenant, testCfg())
+	tn2, err := Open(e.dir, e.tenant, testCfg().Config, testCfg().Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +414,7 @@ func TestOpenCleansAndRejects(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(tlDir, main.ID().String())); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(e.dir, e.tenant, testCfg()); !errors.Is(err, ErrMissingParent) {
+	if _, err := Open(e.dir, e.tenant, testCfg().Config, testCfg().Plugins); !errors.Is(err, ErrMissingParent) {
 		t.Fatalf("missing parent: %v", err)
 	}
 }
@@ -529,4 +533,37 @@ func TestChildWithoutLayersIgnoresParentWritesAfterBranchPoint(t *testing.T) {
 	}
 	mustGet(t, child, 1, 30, "a")
 	mustGet(t, main, 1, 20, "ab")
+}
+
+func TestChildImageHoldsAncestorPages(t *testing.T) {
+	cfg := testCfg()
+	cfg.KeySpace = func(context.Context, *timeline.Timeline, lsn.Lsn) (key.KeySpace, error) {
+		return key.FromRanges(key.KeyRange{Start: pg(0), End: pg(4)}), nil
+	}
+	e := newEnv(t)
+	tn := e.open(t, cfg)
+	main := root(t, tn)
+	write(t, main, 10, initP(1, 10, "a"), initP(2, 10, "parent-only"))
+	child := branch(t, tn, main, 10)
+	for l := lsn.Lsn(20); l <= 40; l += 10 {
+		write(t, child, l, appP(1, l, fmt.Sprintf("+%d", l)))
+		if err := child.FlushAndWait(ctx5(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n, err := child.CreateImageLayers(ctx5(t))
+	if err != nil || n != 1 {
+		t.Fatalf("child images: %d, %v", n, err)
+	}
+	res, ok := child.Layers().Snapshot().Search(pg(2), 41)
+	if !ok || res.Entry.Desc.IsDelta || res.Entry.Desc.ImageLsn() != 40 {
+		t.Fatalf("child read of a parent-only page goes to %v", res.Entry.Desc)
+	}
+	mustGet(t, child, 2, 40, "parent-only")
+	mustGet(t, child, 1, 40, "a+20+30+40")
+	mustGet(t, child, 1, 25, "a+20")
+	mustMissing(t, child, 3, 40)
+	if n, _ := main.CreateImageLayers(ctx5(t)); n != 0 {
+		t.Fatalf("parent got %d images from the child's deltas", n)
+	}
 }

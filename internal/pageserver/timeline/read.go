@@ -61,10 +61,10 @@ func (t *Timeline) get(k key.Key, at lsn.Lsn) ([]byte, error) {
 	if len(in.Records) == 0 {
 		return in.Image, nil
 	}
-	if t.cfg.Redo == nil {
+	if t.plugins.Redo == nil {
 		return nil, ErrNoRedo
 	}
-	page, err := t.cfg.Redo.Reconstruct(k, at, in)
+	page, err := t.plugins.Redo.Reconstruct(k, at, in)
 	if err != nil {
 		return nil, fmt.Errorf("timeline: redo %s @ %s: %w", k, at, err)
 	}

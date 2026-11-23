@@ -40,13 +40,13 @@ func TestLoadChecksTheAncestor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Load(childDir, pe.tenant, childID, nil, readCfg()); !errors.Is(err, ErrAncestorMismatch) {
+	if _, err := Load(childDir, pe.tenant, childID, nil, readCfg().Config, readCfg().Plugins); !errors.Is(err, ErrAncestorMismatch) {
 		t.Fatalf("no ancestor given: %v", err)
 	}
-	if _, err := Load(childDir, pe.tenant, childID, other, readCfg()); !errors.Is(err, ErrAncestorMismatch) {
+	if _, err := Load(childDir, pe.tenant, childID, other, readCfg().Config, readCfg().Plugins); !errors.Is(err, ErrAncestorMismatch) {
 		t.Fatalf("wrong ancestor given: %v", err)
 	}
-	child, err := Load(childDir, pe.tenant, childID, parent, readCfg())
+	child, err := Load(childDir, pe.tenant, childID, parent, readCfg().Config, readCfg().Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,10 +55,10 @@ func TestLoadChecksTheAncestor(t *testing.T) {
 		t.Fatalf("ancestor = %v @ %s", child.Ancestor(), child.AncestorLsn())
 	}
 
-	if _, err := Load(pe.dir, pe.tenant, pe.id, parent, readCfg()); !errors.Is(err, ErrAncestorMismatch) {
+	if _, err := Load(pe.dir, pe.tenant, pe.id, parent, readCfg().Config, readCfg().Plugins); !errors.Is(err, ErrAncestorMismatch) {
 		t.Fatalf("ancestor given to a root: %v", err)
 	}
-	if _, err := Create(filepath.Join(t.TempDir(), "x"), pe.tenant, childID, meta, readCfg()); !errors.Is(err, ErrNeedsAncestor) {
+	if _, err := Create(filepath.Join(t.TempDir(), "x"), pe.tenant, childID, meta, readCfg().Config, readCfg().Plugins); !errors.Is(err, ErrNeedsAncestor) {
 		t.Fatalf("Create with an ancestor in the metadata: %v", err)
 	}
 }
