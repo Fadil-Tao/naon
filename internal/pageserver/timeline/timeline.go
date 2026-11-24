@@ -22,8 +22,10 @@ type Config struct {
 	FlushRetryDelay        time.Duration
 	ImageCreationThreshold int
 	ImageTargetSize        uint64
+	BackgroundPeriod       time.Duration
 
-	failpoint func(name string) error
+	failpoint    func(name string) error
+	noBackground bool
 }
 
 func DefaultConfig() Config {
@@ -34,6 +36,7 @@ func DefaultConfig() Config {
 		FlushRetryDelay:        time.Second,
 		ImageCreationThreshold: 3,
 		ImageTargetSize:        128 << 20,
+		BackgroundPeriod:       20 * time.Second,
 	}
 }
 
@@ -81,6 +84,11 @@ type Timeline struct {
 	stopOnce sync.Once
 
 	bgErr atomic.Pointer[error]
+
+	flushedCh chan struct{}
+	bgCtx     context.Context
+	bgCancel  context.CancelFunc
+	bgDone    chan struct{}
 }
 
 func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, ancestor *Timeline, cfg Config, plugins Plugins) *Timeline {
@@ -103,6 +111,10 @@ func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metada
 	}
 	t.prevRecord.Store(uint64(meta.PrevRecordLsn))
 	t.gcCutoff.Store(uint64(meta.LatestGCCutoffLsn))
+	t.flushedCh = make(chan struct{}, 1)
+	t.bgDone = make(chan struct{})
+	t.bgCtx, t.bgCancel = context.WithCancel(context.Background())
+	go t.backgroundLoop()
 	go t.flushLoop()
 	return t
 }
@@ -174,10 +186,12 @@ func (t *Timeline) Stop() {
 		t.writeMu.Lock()
 		t.stopped = true
 		t.writeMu.Unlock()
+		t.bgCancel()
 		t.lastRecord.Stop()
 		t.flushed.Stop()
 		close(t.stopCh)
 		<-t.done
+		<-t.bgDone
 		t.closeLayers()
 	})
 }

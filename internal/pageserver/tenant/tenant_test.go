@@ -551,9 +551,17 @@ func TestChildImageHoldsAncestorPages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	n, err := child.CreateImageLayers(ctx5(t))
-	if err != nil || n != 1 {
-		t.Fatalf("child images: %d, %v", n, err)
+	if _, err := child.CreateImageLayers(ctx5(t)); err != nil {
+		t.Fatal(err)
+	}
+	imgs := 0
+	for _, e := range child.Layers().Snapshot().Historic() {
+		if !e.Desc.IsDelta {
+			imgs++
+		}
+	}
+	if imgs != 1 {
+		t.Fatalf("child has %d image layers, want 1", imgs)
 	}
 	res, ok := child.Layers().Snapshot().Search(pg(2), 41)
 	if !ok || res.Entry.Desc.IsDelta || res.Entry.Desc.ImageLsn() != 40 {

@@ -217,5 +217,9 @@ func (t *Timeline) persistMetadata() error {
 	}
 	t.metaDirty = false
 	t.flushed.Advance(t.meta.DiskConsistentLsn)
+	select {
+	case t.flushedCh <- struct{}{}:
+	default:
+	}
 	return nil
 }

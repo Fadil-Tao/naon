@@ -24,6 +24,7 @@ func fixedKeySpace(n uint32) KeySpaceFunc {
 func imageCfg(n uint32) opts {
 	c := readCfg()
 	c.KeySpace = fixedKeySpace(n)
+	c.noBackground = true
 	return c
 }
 
@@ -186,6 +187,7 @@ func TestImageKeySpaceWithHoles(t *testing.T) {
 	cfg.KeySpace = func(context.Context, *Timeline, lsn.Lsn) (key.KeySpace, error) {
 		return key.FromRanges(rng(0, 2), rng(3, 5)), nil
 	}
+	cfg.noBackground = true
 	tl := newEnv(t).create(t, cfg)
 	ops := []op{{k: 0, lsn: 10, init: true, text: "a"}, {k: 4, lsn: 10, init: true, text: "e"}}
 	ingest(t, tl, ops)

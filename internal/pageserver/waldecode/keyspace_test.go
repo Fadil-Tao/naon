@@ -82,18 +82,21 @@ func TestImageCreationFromSQLiteWAL(t *testing.T) {
 			t.Fatal(err)
 		}
 		from := lsn.Lsn(0)
-		made := 0
 		for i := 4; i < len(points); i += 4 {
 			ingest(t, r, tl, stream, from, points[i].lsn)
 			from = points[i].lsn
 			if err := tl.FlushAndWait(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			n, err := tl.CreateImageLayers(context.Background())
-			if err != nil {
+			if _, err := tl.CreateImageLayers(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			made += n
+		}
+		made := 0
+		for _, e := range tl.Layers().Snapshot().Historic() {
+			if !e.Desc.IsDelta {
+				made++
+			}
 		}
 		ingest(t, r, tl, stream, from, lsn.Lsn(len(stream)))
 		if made == 0 {
