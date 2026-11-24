@@ -110,5 +110,6 @@ func (t *Timeline) createImageLayer(ks key.KeySpace, r key.KeyRange, at lsn.Lsn)
 		reader.Close()
 		return err
 	}
+	t.requestUpload()
 	return nil
 }

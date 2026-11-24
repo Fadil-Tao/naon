@@ -13,6 +13,7 @@ import (
 	"github.com/Fadil-Tao/naon/internal/pageserver/layer"
 	"github.com/Fadil-Tao/naon/internal/pageserver/layermap"
 	"github.com/Fadil-Tao/naon/internal/pageserver/lsn"
+	"github.com/Fadil-Tao/naon/internal/pageserver/remote"
 )
 
 type Config struct {
@@ -43,6 +44,7 @@ func DefaultConfig() Config {
 type Plugins struct {
 	Redo     Redo
 	KeySpace KeySpaceFunc
+	Remote   remote.Storage
 }
 
 type Timeline struct {
@@ -89,6 +91,15 @@ type Timeline struct {
 	bgCtx     context.Context
 	bgCancel  context.CancelFunc
 	bgDone    chan struct{}
+
+	savedMeta     Metadata
+	uploadCh      chan struct{}
+	upDone        chan struct{}
+	remoteLayers  map[string]remote.LayerInfo
+	remoteIndexed bool
+	remoteLsn     atomic.Uint64
+	syncReq       atomic.Uint64
+	synced        *LsnWaiter
 }
 
 func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metadata, ancestor *Timeline, cfg Config, plugins Plugins) *Timeline {
@@ -114,8 +125,14 @@ func newTimeline(dir string, tenant ids.TenantID, id ids.TimelineID, meta Metada
 	t.flushedCh = make(chan struct{}, 1)
 	t.bgDone = make(chan struct{})
 	t.bgCtx, t.bgCancel = context.WithCancel(context.Background())
+	t.savedMeta = meta
+	t.uploadCh = make(chan struct{}, 1)
+	t.upDone = make(chan struct{})
+	t.synced = NewLsnWaiter(0)
 	go t.backgroundLoop()
 	go t.flushLoop()
+	go t.uploadLoop()
+	t.requestUpload()
 	return t
 }
 
@@ -189,9 +206,11 @@ func (t *Timeline) Stop() {
 		t.bgCancel()
 		t.lastRecord.Stop()
 		t.flushed.Stop()
+		t.synced.Stop()
 		close(t.stopCh)
 		<-t.done
 		<-t.bgDone
+		<-t.upDone
 		t.closeLayers()
 	})
 }

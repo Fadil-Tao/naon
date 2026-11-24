@@ -216,10 +216,12 @@ func (t *Timeline) persistMetadata() error {
 		return fmt.Errorf("timeline: save metadata: %w", err)
 	}
 	t.metaDirty = false
+	t.savedMeta = t.meta
 	t.flushed.Advance(t.meta.DiskConsistentLsn)
 	select {
 	case t.flushedCh <- struct{}{}:
 	default:
 	}
+	t.requestUpload()
 	return nil
 }

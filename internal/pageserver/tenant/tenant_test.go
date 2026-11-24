@@ -51,7 +51,7 @@ func newEnv(t *testing.T) env {
 
 func (e env) open(t testing.TB, cfg opts) *Tenant {
 	t.Helper()
-	tn, err := Open(e.dir, e.tenant, cfg.Config, cfg.Plugins)
+	tn, err := Open(context.Background(), e.dir, e.tenant, cfg.Config, cfg.Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestOpenCleansAndRejects(t *testing.T) {
 	os.WriteFile(filepath.Join(leftover, "junk"), []byte("x"), 0o644)
 	os.MkdirAll(filepath.Join(tlDir, "not-a-timeline"), 0o755)
 	os.WriteFile(filepath.Join(tlDir, "README"), []byte("x"), 0o644)
-	tn2, err := Open(e.dir, e.tenant, testCfg().Config, testCfg().Plugins)
+	tn2, err := Open(context.Background(), e.dir, e.tenant, testCfg().Config, testCfg().Plugins)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestOpenCleansAndRejects(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(tlDir, main.ID().String())); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Open(e.dir, e.tenant, testCfg().Config, testCfg().Plugins); !errors.Is(err, ErrMissingParent) {
+	if _, err := Open(context.Background(), e.dir, e.tenant, testCfg().Config, testCfg().Plugins); !errors.Is(err, ErrMissingParent) {
 		t.Fatalf("missing parent: %v", err)
 	}
 }

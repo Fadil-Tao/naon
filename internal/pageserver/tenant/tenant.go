@@ -12,6 +12,7 @@ import (
 	"github.com/Fadil-Tao/naon/internal/pageserver/ids"
 	"github.com/Fadil-Tao/naon/internal/pageserver/iox"
 	"github.com/Fadil-Tao/naon/internal/pageserver/lsn"
+	"github.com/Fadil-Tao/naon/internal/pageserver/remote"
 	"github.com/Fadil-Tao/naon/internal/pageserver/timeline"
 )
 
@@ -42,12 +43,17 @@ type Tenant struct {
 	stopped   bool
 }
 
-func Open(dir string, id ids.TenantID, cfg timeline.Config, plugins timeline.Plugins) (*Tenant, error) {
+func Open(ctx context.Context, dir string, id ids.TenantID, cfg timeline.Config, plugins timeline.Plugins) (*Tenant, error) {
 	tlDir := filepath.Join(dir, timelinesDir)
 	if err := os.MkdirAll(tlDir, 0o755); err != nil {
 		return nil, fmt.Errorf("tenant: create %s: %w", tlDir, err)
 	}
 	t := &Tenant{id: id, dir: dir, cfg: cfg, plugins: plugins, timelines: make(map[ids.TimelineID]*timeline.Timeline)}
+	if plugins.Remote != nil {
+		if err := t.restoreMissing(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if err := t.loadAll(); err != nil {
 		t.Stop()
 		return nil, err
@@ -241,4 +247,35 @@ func (t *Tenant) Shutdown(ctx context.Context) error {
 		}
 	}
 	return first
+}
+
+func (t *Tenant) restoreMissing(ctx context.Context) error {
+	names, err := t.plugins.Remote.List(ctx, remote.TimelinesPath(t.id))
+	if err != nil {
+		return fmt.Errorf("tenant: list remote timelines: %w", err)
+	}
+	for _, name := range names {
+		id, err := ids.ParseTimelineID(name)
+		if err != nil {
+			continue
+		}
+		final := t.timelinePath(id)
+		if _, err := os.Stat(filepath.Join(final, timeline.MetadataFileName)); err == nil {
+			continue
+		}
+		tmp := final + uninitSuffix
+		if err := os.RemoveAll(tmp); err != nil {
+			return err
+		}
+		if _, err := timeline.Restore(ctx, t.plugins.Remote, tmp, t.id, id); err != nil {
+			return fmt.Errorf("tenant: restore %s: %w", id, err)
+		}
+		if err := os.RemoveAll(final); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, final); err != nil {
+			return err
+		}
+	}
+	return iox.SyncDir(filepath.Join(t.dir, timelinesDir))
 }
