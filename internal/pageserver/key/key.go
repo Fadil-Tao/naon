@@ -9,6 +9,8 @@ import (
 	"strconv"
 )
 
+
+// neon/lib/pageserver_api/src/key.rs
 type Key struct {
 	Field1 uint8 // eg 0x00
 	Field2 uint32 // tablespaceID
@@ -209,7 +211,7 @@ func (k Key) Add(n uint32) (Key, error) {
 		return k, nil
 	}
 	k.Field1, carry = addU8(k.Field1, 1)
-	if !carry {
+	if carry {
 		return k, ErrKeyOverflow
 	}
 
