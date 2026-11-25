@@ -21,7 +21,7 @@ type AtomicFile struct {
 func Create(path string) (*AtomicFile, error) {
 	tmp := path + TempSuffix
 
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE, 0o644)
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("iox : create %s: %w", tmp, err)
 	}
